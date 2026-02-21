@@ -48,6 +48,8 @@
 | `image_path` 또는 `image_url` 또는 `image_base64` | `string` | **예** | `N/A` | 첫 번째 이미지 입력 (경로/URL/Base64). |
 | `image_path_2` 또는 `image_url_2` 또는 `image_base64_2` | `string` | 아니오 | `N/A` | 선택적 두 번째 이미지 입력 (경로/URL/Base64). |
 | `image_path_3` 또는 `image_url_3` 또는 `image_base64_3` | `string` | 아니오 | `N/A` | 선택적 세 번째 이미지 입력 (경로/URL/Base64). |
+| `lora_repo` | `string` | 아니오 | `N/A` | 커스텀 LoRA를 위한 Hugging Face 저장소 ID (예: `username/repo`). |
+| `lora_scale` | `float` | 아니오 | `1.0` | LoRA 효과의 강도. |
 | `seed` | `integer` | **예** | `N/A` | 동일 결과 재현을 위한 랜덤 시드. |
 | `width` | `integer` | **예** | `N/A` | 출력 이미지의 너비(픽셀). |
 | `height` | `integer` | **예** | `N/A` | 출력 이미지의 높이(픽셀). |
@@ -163,13 +165,16 @@ python qwen_edit/test_api.py --mode url --image-url "https://example.com/your-im
 
 선택: `test.env`에 `TEST_IMAGE_URL`을 넣으면 `--image-url` 대신 사용됩니다. 개인정보 없이 쓰는 예시는 `qwen_edit/.env.example`을 참고하세요.
 
-### 📁 네트워크 볼륨 사용
+### 📁 네트워크 볼륨 사용 및 동적 LoRA
 
-Base64로 인코딩된 파일을 직접 전송하는 대신 RunPod의 Network Volumes를 사용하여 대용량 파일을 처리할 수 있습니다. 이는 특히 대용량 이미지 파일을 다룰 때 유용합니다.
+Base64로 인코딩된 파일을 직접 전송하는 대신 RunPod의 Network Volumes를 사용하여 대용량 파일을 처리하고 모델을 캐시할 수 있습니다.
 
-1.  **네트워크 볼륨 생성 및 연결**: RunPod 대시보드에서 Network Volume(예: S3 기반 볼륨)을 생성하고 Serverless Endpoint 설정에 연결합니다.
-2.  **파일 업로드**: 사용하려는 이미지 파일을 생성된 Network Volume에 업로드합니다.
-3.  **경로 지정**: API 요청 시 Network Volume 내의 파일 경로를 `image_path` 또는 `image_path_2`에 지정합니다. 예: 볼륨이 `/my_volume`에 마운트되고 `reference.jpg`를 사용하는 경우 경로는 `"/my_volume/reference.jpg"`입니다.
+1.  **네트워크 볼륨 생성 및 연결**: RunPod 대시보드에서 Network Volume(예: 20GB 이상)을 생성하고 Serverless Endpoint 설정에 연결합니다.
+2.  **마운트 경로**: 마운트 경로를 `/runpod-volume`으로 설정합니다.
+3.  **동적 LoRA 캐싱**: `lora_repo`를 제공하면 워커가 Hugging Face에서 LoRA를 자동으로 다운로드하여 `/runpod-volume/loras`에 저장합니다. 동일한 LoRA를 사용하는 후속 요청은 볼륨에서 즉시 로드됩니다.
+4.  **Private LoRA**: 비공개 Hugging Face 저장소를 사용하려면 RunPod Endpoint 설정에서 `HF_TOKEN` 환경 변수를 설정하세요.
+5.  **파일 업로드**: 사용하려는 이미지 파일을 생성된 Network Volume에 업로드합니다.
+6.  **경로 지정**: API 요청 시 Network Volume 내의 파일 경로를 `image_path` 또는 `image_path_2`에 지정합니다. 예: 볼륨이 `/runpod-volume`에 마운트되고 `reference.jpg`를 사용하는 경우 경로는 `"/runpod-volume/reference.jpg"`입니다.
 
 ### 예제 요청 파일
 

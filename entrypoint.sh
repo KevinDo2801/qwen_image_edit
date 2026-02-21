@@ -61,6 +61,20 @@ fi
 # CUDA 환경 변수 설정
 echo "Using CUDA device: $CUDA_VISIBLE_DEVICES"
 
+# LoRA Storage 설정
+LORA_DIR="/runpod-volume/loras"
+COMFYUI_LORA_DIR="/ComfyUI/models/loras"
+
+echo "Setting up LoRA storage..."
+mkdir -p "$LORA_DIR"
+# ComfyUI lora thư mục có thể đã có sẵn file mặc định từ Dockerfile
+# Tạo symlink 'remote' trỏ tới network volume
+mkdir -p "$COMFYUI_LORA_DIR"
+if [ ! -L "$COMFYUI_LORA_DIR/remote" ]; then
+    ln -s "$LORA_DIR" "$COMFYUI_LORA_DIR/remote"
+    echo "✅ Created symlink for remote LoRAs"
+fi
+
 # Start ComfyUI in the background
 echo "Starting ComfyUI in the background..."
 python /ComfyUI/main.py --listen --use-sage-attention &

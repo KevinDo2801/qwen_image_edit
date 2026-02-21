@@ -11,11 +11,67 @@ import urllib.parse
 import binascii # Base64 에러 처리를 위해 import
 import subprocess
 import time
-
+from huggingface_hub import hf_hub_download
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# LoRA 설정
+LORA_CACHE_DIR = "/runpod-volume/loras"
+DEFAULT_LORA_NAME = "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"
+current_lora_repo = None
+current_lora_filename = DEFAULT_LORA_NAME
+
+def download_lora_from_hf(repo_id):
+    """Hugging Face에서 LoRA를 다운로드하고 파일명을 반환합니다."""
+    global current_lora_repo, current_lora_filename
+    
+    if repo_id == current_lora_repo:
+        logger.info(f"♻️ LoRA cache hit: {repo_id}")
+        return current_lora_filename
+
+    try:
+        os.makedirs(LORA_CACHE_DIR, exist_ok=True)
+        token = os.environ.get("HF_TOKEN")
+        
+        logger.info(f"📦 Downloading LoRA from Hugging Face: {repo_id}")
+        
+        # repo_id에서 파일명 추출 (보통 .safetensors)
+        # file_path = hf_hub_download(repo_id=repo_id, filename="pytorch_lora_weights.safetensors", local_dir=LORA_CACHE_DIR, token=token)
+        # Qwen-Image-Edit의 경우 보통 단일 safetensors 파일이므로 hf_hub_download의 allow_patterns를 사용할 수도 있음
+        # 여기서는 zimage-docker와 유사하게 처리하되, ComfyUI의 lora_name은 파일명만 필요함
+        
+        # Lưu ý: hf_hub_download trả về đường dẫn tuyệt đối. 
+        # ComfyUI cần file nằm trong thư mục models/loras. 
+        # Chúng ta sẽ dùng symlink từ /runpod-volume/loras sang /ComfyUI/models/loras/remote ở entrypoint.sh
+        
+        # Thử tải file mặc định hoặc tìm file .safetensors
+        # Để đơn giản, giả sử file là 'pytorch_lora_weights.safetensors' hoặc tương tự
+        # Trong thực tế, người dùng nên cung cấp filename hoặc chúng ta quét repo.
+        # Ở đây tôi sẽ mặc định tìm file .safetensors đầu tiên nếu không chỉ định.
+        
+        # Tạm thời giả định file name là 'pytorch_lora_weights.safetensors' hoặc repo_id có chứa filename
+        filename = "pytorch_lora_weights.safetensors"
+        if "/" in repo_id and repo_id.endswith(".safetensors"):
+            parts = repo_id.split("/")
+            repo_id = "/".join(parts[:-1])
+            filename = parts[-1]
+
+        file_path = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            local_dir=LORA_CACHE_DIR,
+            token=token
+        )
+        
+        current_lora_repo = repo_id
+        current_lora_filename = os.path.join("remote", os.path.basename(file_path))
+        logger.info(f"✅ LoRA downloaded to: {file_path}")
+        return current_lora_filename
+    except Exception as e:
+        logger.error(f"❌ Failed to download LoRA: {e}")
+        return DEFAULT_LORA_NAME
 
 # CUDA 검사 및 설정
 def check_cuda_availability():
@@ -257,6 +313,20 @@ def handler(job):
         prompt[_NODE_IMAGE_3]["inputs"]["image"] = image_paths[2]
 
     prompt[_NODE_PROMPT]["inputs"]["prompt"] = job_input.get("prompt", "")
+    
+    # LoRA 설정
+    lora_repo = job_input.get("lora_repo")
+    lora_scale = float(job_input.get("lora_scale", 1.0))
+    
+    if lora_repo:
+        lora_name = download_lora_from_hf(lora_repo)
+        if "89" in prompt:
+            prompt["89"]["inputs"]["lora_name"] = lora_name
+            prompt["89"]["inputs"]["strength_model"] = lora_scale
+    elif "89" in prompt and "lora_scale" in job_input:
+        # repo는 없지만 scale만 조절하고 싶은 경우 (기본 LoRA 사용)
+        prompt["89"]["inputs"]["strength_model"] = lora_scale
+
     if _NODE_SEED in prompt and "seed" in job_input:
         prompt[_NODE_SEED]["inputs"]["seed"] = job_input["seed"]
     if _NODE_WIDTH in prompt and "width" in job_input:

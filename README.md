@@ -48,6 +48,8 @@ The `input` object must contain the following fields. Image inputs support **URL
 | `image_path` or `image_url` or `image_base64` | `string` | **Yes** | `N/A` | First image input (path/URL/Base64). |
 | `image_path_2` or `image_url_2` or `image_base64_2` | `string` | No | `N/A` | Optional second image input (path/URL/Base64). |
 | `image_path_3` or `image_url_3` or `image_base64_3` | `string` | No | `N/A` | Optional third image input (path/URL/Base64). |
+| `lora_repo` | `string` | No | `N/A` | Hugging Face repository ID for a custom LoRA (e.g., `username/repo`). |
+| `lora_scale` | `float` | No | `1.0` | Strength of the LoRA effect. |
 | `seed` | `integer` | **Yes** | `N/A` | Random seed for deterministic output. |
 | `width` | `integer` | **Yes** | `N/A` | Output image width in pixels. |
 | `height` | `integer` | **Yes** | `N/A` | Output image height in pixels. |
@@ -163,13 +165,16 @@ python qwen_edit/test_api.py --mode url --image-url "https://example.com/your-im
 
 Optional: `TEST_IMAGE_URL` in `test.env` can be used instead of `--image-url`. See `qwen_edit/.env.example` for a template without personal data.
 
-### 📁 Using Network Volumes
+### 📁 Using Network Volumes & Dynamic LoRA
 
-Instead of directly transmitting Base64 encoded files, you can use RunPod's Network Volumes to handle large files. This is especially useful when dealing with large image files.
+Instead of directly transmitting Base64 encoded files, you can use RunPod's Network Volumes to handle large files and cache models.
 
-1.  **Create and Connect Network Volume**: Create a Network Volume (e.g., S3-based volume) from the RunPod dashboard and connect it to your Serverless Endpoint settings.
-2.  **Upload Files**: Upload the image files you want to use to the created Network Volume.
-3.  **Specify Paths**: When making an API request, specify the file paths within the Network Volume for `image_path` or `image_path_2`. For example, if the volume is mounted at `/my_volume` and you use `reference.jpg`, the path would be `"/my_volume/reference.jpg"`.
+1.  **Create and Connect Network Volume**: Create a Network Volume (e.g., 20GB+) from the RunPod dashboard and connect it to your Serverless Endpoint settings.
+2.  **Mount Path**: Set the mount path to `/runpod-volume`.
+3.  **Dynamic LoRA Caching**: When you provide a `lora_repo`, the worker will automatically download the LoRA from Hugging Face and store it in `/runpod-volume/loras`. Subsequent requests using the same LoRA will load instantly from the volume.
+4.  **Private LoRAs**: To use private Hugging Face repositories, set the `HF_TOKEN` environment variable in your RunPod Endpoint settings.
+5.  **Upload Files**: Upload the image files you want to use to the created Network Volume.
+6.  **Specify Paths**: When making an API request, specify the file paths within the Network Volume for `image_path` or `image_path_2`. For example, if the volume is mounted at `/runpod-volume` and you use `reference.jpg`, the path would be `"/runpod-volume/reference.jpg"`.
 
 ### Example request files
 
