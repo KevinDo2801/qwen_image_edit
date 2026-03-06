@@ -53,6 +53,7 @@ The `input` object must contain the following fields. Image inputs support **URL
 | `seed` | `integer` | **Yes** | `N/A` | Random seed for deterministic output. |
 | `width` | `integer` | **Yes** | `N/A` | Output image width in pixels. |
 | `height` | `integer` | **Yes** | `N/A` | Output image height in pixels. |
+| `redirect_url` | `boolean` | No | `false` | If `true`, upload result to R2 and return `image_url`; otherwise return Base64 `image`. |
 
 Notes:
 - Guidance is not used by the current handler.
@@ -105,17 +106,29 @@ Notes:
 
 #### Success
 
-If the job is successful, it returns a JSON object with the generated image Base64 encoded.
+If the job is successful:
+
+- **Default** (`redirect_url` not set or `false`): returns JSON with Base64-encoded image.
+- **With `redirect_url: true`**: uploads the image to Cloudflare R2 and returns the public/presigned URL (requires `R2_*` env vars).
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `image` | `string` | Base64-encoded image data (raw base64 string, no `data:...` prefix). |
+| `image` | `string` | Base64-encoded image data (when `redirect_url` is not true). |
+| `image_url` | `string` | Public or presigned URL of the image on R2 (when `redirect_url: true`). |
 
-**Success Response Example:**
+**Success Response Example (Base64):**
 
 ```json
 {
   "image": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+}
+```
+
+**Success Response Example (R2 URL, when `redirect_url: true`):**
+
+```json
+{
+  "image_url": "https://pub-xxx.r2.dev/temporary/task_xxx.png"
 }
 ```
 
@@ -175,6 +188,18 @@ Instead of directly transmitting Base64 encoded files, you can use RunPod's Netw
 4.  **Private LoRAs**: To use private Hugging Face repositories, set the `HF_TOKEN` environment variable in your RunPod Endpoint settings.
 5.  **Upload Files**: Upload the image files you want to use to the created Network Volume.
 6.  **Specify Paths**: When making an API request, specify the file paths within the Network Volume for `image_path` or `image_path_2`. For example, if the volume is mounted at `/runpod-volume` and you use `reference.jpg`, the path would be `"/runpod-volume/reference.jpg"`.
+
+### R2 (redirect_url)
+
+When `redirect_url: true` is set in the request input, the handler uploads the generated image to Cloudflare R2 and returns `image_url`. Set these environment variables in your RunPod Endpoint:
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `R2_ACCOUNT_ID` | Yes | R2 account ID. |
+| `R2_ACCESS_KEY_ID` | Yes | R2 access key. |
+| `R2_SECRET_ACCESS_KEY` | Yes | R2 secret key. |
+| `R2_BUCKET_NAME` | Yes | Bucket name. |
+| `R2_PUBLIC_URL` or `R2_CUSTOM_DOMAIN` | No | Public base URL for images (e.g. `https://pub-xxx.r2.dev`). If unset, a presigned URL (1h) is returned. |
 
 ### Example request files
 

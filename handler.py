@@ -12,6 +12,7 @@ import binascii # Base64 에러 처리를 위해 import
 import subprocess
 import time
 from huggingface_hub import hf_hub_download
+import boto3
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -263,6 +264,75 @@ def save_base64_to_file(base64_data, temp_dir, output_filename):
         logger.error(f"❌ Base64 디코딩 실패: {e}")
         raise Exception(f"Base64 디코딩 실패: {e}")
 
+
+R2_KEY_PREFIX = "temporary"
+
+
+def upload_to_r2(image_data, file_name):
+    """
+    Upload image data to Cloudflare R2 and return the URL.
+    Requires R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME.
+    Optional: R2_PUBLIC_URL or R2_CUSTOM_DOMAIN for public URL; else presigned URL (1h).
+    """
+    try:
+        account_id = os.environ.get('R2_ACCOUNT_ID')
+        access_key = os.environ.get('R2_ACCESS_KEY_ID')
+        secret_key = os.environ.get('R2_SECRET_ACCESS_KEY')
+        bucket_name = os.environ.get('R2_BUCKET_NAME')
+        custom_domain = os.environ.get('R2_CUSTOM_DOMAIN') or os.environ.get('R2_PUBLIC_URL')
+
+        if not all([account_id, access_key, secret_key, bucket_name]):
+            logger.error("Environment variables for R2 upload are not set.")
+            return None
+
+        key = f"{R2_KEY_PREFIX}/{file_name}"
+
+        s3_client = boto3.client(
+            's3',
+            endpoint_url=f'https://{account_id}.r2.cloudflarestorage.com',
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key
+        )
+
+        if isinstance(image_data, str):
+            try:
+                image_bytes = base64.b64decode(image_data)
+            except binascii.Error:
+                image_bytes = image_data.encode('utf-8')
+        else:
+            image_bytes = image_data
+
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=key,
+            Body=image_bytes,
+            ContentType='image/png'
+        )
+
+        if custom_domain:
+            url = f"{custom_domain.rstrip('/')}/{key}"
+            if not url.startswith("http"):
+                url = f"https://{url}"
+            logger.info(f"✅ R2 upload successful (Public URL): {url}")
+            return url
+        else:
+            try:
+                url = s3_client.generate_presigned_url(
+                    ClientMethod='get_object',
+                    Params={'Bucket': bucket_name, 'Key': key},
+                    ExpiresIn=3600
+                )
+                logger.info(f"✅ R2 upload successful (Presigned URL): {url}")
+                return url
+            except Exception as e:
+                logger.error(f"❌ Failed to generate Presigned URL: {e}")
+                return None
+
+    except Exception as e:
+        logger.error(f"❌ Error during R2 upload: {e}")
+        return None
+
+
 def handler(job):
     job_input = job.get("input", {})
 
@@ -374,12 +444,19 @@ def handler(job):
     # 이미지가 없는 경우 처리
     if not images:
         return {"error": "이미지를 생성할 수 없습니다."}
-    
+
     # 첫 번째 이미지 반환
     for node_id in images:
         if images[node_id]:
-            return {"image": images[node_id][0]}
-    
+            image_data = images[node_id][0]
+            if job_input.get("redirect_url") is True:
+                file_name = f"{task_id}.png"
+                image_url = upload_to_r2(image_data, file_name)
+                if image_url:
+                    return {"image_url": image_url}
+                logger.warning("R2 upload failed, returning Base64 image.")
+            return {"image": image_data}
+
     return {"error": "이미지를 찾을 수 없습니다."}
 
 runpod.serverless.start({"handler": handler})
