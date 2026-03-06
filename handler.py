@@ -272,6 +272,7 @@ def upload_to_r2(image_data, file_name):
     """
     Upload image data to Cloudflare R2 and return the URL.
     Requires R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME.
+    Objects are stored under key prefix: temporary/qimage/
     Optional: R2_PUBLIC_URL or R2_CUSTOM_DOMAIN for public URL; else presigned URL (1h).
     """
     try:
@@ -285,7 +286,7 @@ def upload_to_r2(image_data, file_name):
             logger.error("Environment variables for R2 upload are not set.")
             return None
 
-        key = f"{R2_KEY_PREFIX}/{file_name}"
+        key = f"{R2_KEY_PREFIX}/qimage/{file_name}"
 
         s3_client = boto3.client(
             's3',
